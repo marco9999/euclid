@@ -15,6 +15,7 @@ use point::TypedPoint3D;
 use vector::TypedVector3D;
 use size::TypedSize3D;
 use approxord::{min, max};
+use side_offsets::TypedSideOffsets3D;
 
 use num_traits::NumCast;
 #[cfg(feature = "serde")]
@@ -376,6 +377,52 @@ where
 
 impl<T, U> TypedBox3D<T, U>
 where
+    T: Copy + Zero + PartialOrd + Add<T, Output = T> + Sub<T, Output = T>,
+{
+    /// Calculate the size and position of an inner box3d.
+    ///
+    /// Subtracts the side offsets from all sides. The horizontal, vertical
+    /// and applicate offsets must not be larger than the original side length.
+    pub fn inner_box(&self, offsets: TypedSideOffsets3D<T, U>) -> Self {
+        let box3d = TypedBox3D::new(
+            TypedPoint3D::new(
+                self.min_x() + offsets.left,
+                self.min_y() + offsets.bottom,
+                self.min_z() + offsets.back,
+            ),
+            TypedPoint3D::new(
+                self.max_x() - offsets.right,
+                self.max_y() - offsets.top,
+                self.max_z() - offsets.front,
+            ),
+        );
+        debug_assert!(box3d.size().width >= T::zero());
+        debug_assert!(box3d.size().height >= T::zero());
+        debug_assert!(box3d.size().depth >= T::zero());
+        box3d
+    }
+
+    /// Calculate the b and position of an outer box3d.
+    ///
+    /// Add the offsets to all sides. The expanded box3d is returned.
+    pub fn outer_box(&self, offsets: TypedSideOffsets3D<T, U>) -> Self {
+        TypedBox3D::new(
+            TypedPoint3D::new(
+                self.min_x() - offsets.left,
+                self.min_y() - offsets.bottom,
+                self.min_z() - offsets.back,
+            ),
+            TypedPoint3D::new(
+                self.max_x() + offsets.right,
+                self.max_y() + offsets.top,
+                self.max_z() + offsets.front,
+            ),
+        )
+    }
+}
+
+impl<T, U> TypedBox3D<T, U>
+where
     T: Copy + One + Add<Output = T> + Div<Output = T>,
 {
     pub fn center(&self) -> TypedPoint3D<T, U> {
@@ -686,6 +733,7 @@ mod tests {
     use vector::vec3;
     use size::size3;
     use point::{point3, Point3D};
+    use side_offsets::SideOffsets3D;
     use super::*;
 
     #[test]
@@ -918,5 +966,29 @@ mod tests {
             let b = Box3D::from_points(&[Point3D::from(coords_neg), Point3D::from(coords_pos)]);
             assert!(b.is_empty());
         }
+    }
+    
+    #[test]
+    fn test_inner_box() {
+        let b = Box3D::from_points(&[point3(50.0, 25.0, 12.5), point3(100.0, 160.0, 200.0)]);
+        let b = b.inner_box(SideOffsets3D::new(10.0, 20.0, 5.0, 10.0, 20.0, 5.0));
+        assert!(b.max_x() == 80.0);
+        assert!(b.max_y() == 150.0);
+        assert!(b.max_z() == 180.0);
+        assert!(b.min_x() == 60.0);
+        assert!(b.min_y() == 30.0);
+        assert!(b.min_z() == 17.5);
+    }
+
+    #[test]
+    fn test_outer_box() {
+        let b = Box3D::from_points(&[point3(50.0, 25.0, 12.5), point3(100.0, 160.0, 200.0)]);
+        let b = b.outer_box(SideOffsets3D::new(10.0, 20.0, 5.0, 10.0, 20.0, 5.0));
+        assert!(b.max_x() == 120.0);
+        assert!(b.max_y() == 170.0);
+        assert!(b.max_z() == 220.0);
+        assert!(b.min_x() == 40.0);
+        assert!(b.min_y() == 20.0);
+        assert!(b.min_z() == 7.5);
     }
 }
